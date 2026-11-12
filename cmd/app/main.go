@@ -44,8 +44,40 @@ func run() error {
 
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
-	mux := http.NewServeMux()
+	srv := &http.Server{
+		Addr:         ":8080",
+		Handler:      newHandler(),
+		ReadTimeout:  10 * time.Second,
+		WriteTimeout: 10 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
 
+	// Shut down cleanly on Ctrl-C or on the signal Docker sends when stopping
+	// the container, so in-flight requests are allowed to finish.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	errCh := make(chan error, 1)
+	go func() {
+		log.Info("listening", "addr", srv.Addr, "commit", version.Current().Commit)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			errCh <- err
+		}
+	}()
+
+	select {
+	case err := <-errCh:
+		return err
+	case <-ctx.Done():
+		log.Info("shutting down")
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		return srv.Shutdown(shutdownCtx)
+	}
+}
+
+func newHandler() http.Handler {
+	mux := http.NewServeMux()
 	store := NewLinkStore()
 
 	// ---- the common contract: four routes, identical in every project -------
@@ -111,36 +143,7 @@ func run() error {
 		writeJSON(w, http.StatusCreated, link)
 	})
 
-	srv := &http.Server{
-		Addr:         ":8080",
-		Handler:      mux,
-		ReadTimeout:  10 * time.Second,
-		WriteTimeout: 10 * time.Second,
-		IdleTimeout:  60 * time.Second,
-	}
-
-	// Shut down cleanly on Ctrl-C or on the signal Docker sends when stopping
-	// the container, so in-flight requests are allowed to finish.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
-
-	errCh := make(chan error, 1)
-	go func() {
-		log.Info("listening", "addr", srv.Addr, "commit", version.Current().Commit)
-		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			errCh <- err
-		}
-	}()
-
-	select {
-	case err := <-errCh:
-		return err
-	case <-ctx.Done():
-		log.Info("shutting down")
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		return srv.Shutdown(shutdownCtx)
-	}
+	return mux
 }
 
 // writeJSON is the one place that sets the content type, so every response in
