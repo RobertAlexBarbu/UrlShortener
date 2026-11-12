@@ -9,6 +9,7 @@ package main
 
 import (
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -16,6 +17,8 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -42,6 +45,8 @@ func run() error {
 	log := slog.New(slog.NewTextHandler(os.Stderr, nil))
 
 	mux := http.NewServeMux()
+
+	store := NewLinkStore()
 
 	// ---- the common contract: four routes, identical in every project -------
 
@@ -73,11 +78,38 @@ func run() error {
 	// state without restarting the container. If your project persists data,
 	// this clears what was persisted too.
 	mux.HandleFunc("POST /reset", func(w http.ResponseWriter, r *http.Request) {
-		// TODO: clear your own state here.
+		store.Reset()
 		w.WriteHeader(http.StatusNoContent)
 	})
 
 	// ---- your own routes go below -------------------------------------------
+
+	mux.HandleFunc("POST /links", func(w http.ResponseWriter, r *http.Request) {
+		var req CreateLinkRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			writeError(w, http.StatusBadRequest, "bad_request", "invalid json body")
+			return
+		}
+
+		req.URL = strings.TrimSpace(req.URL)
+		if req.URL == "" {
+			writeError(w, http.StatusBadRequest, "bad_request", "url is required")
+			return
+		}
+
+		req.Code = strings.TrimSpace(req.Code)
+		link, err := store.Create(req.URL, req.Code)
+		if err != nil {
+			if errors.Is(err, ErrCodeExists) {
+				writeError(w, http.StatusConflict, "conflict", "code already in use")
+				return
+			}
+			writeError(w, http.StatusInternalServerError, "internal_error", err.Error())
+			return
+		}
+
+		writeJSON(w, http.StatusCreated, link)
+	})
 
 	srv := &http.Server{
 		Addr:         ":8080",
@@ -124,6 +156,9 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, map[string]string{"error": code, "message": message})
 }
+
+var ErrCodeExists = errors.New("code already exists")
+
 type Link struct {
 	ID        int       `json:"id"`
 	Code      string    `json:"code"`
@@ -157,4 +192,51 @@ func (s *LinkStore) Reset() {
 	s.links = make(map[string]Link)
 	s.byID = make(map[int]Link)
 	s.nextID = 1
+}
+
+const codeChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+
+func generateCode(length int) (string, error) {
+	bytes := make([]byte, length)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", err
+	}
+	for i, b := range bytes {
+		bytes[i] = codeChars[int(b)%len(codeChars)]
+	}
+	return string(bytes), nil
+}
+
+func (s *LinkStore) Create(url, code string) (Link, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if code != "" {
+		if _, exists := s.links[code]; exists {
+			return Link{}, ErrCodeExists
+		}
+	} else {
+		for {
+			var err error
+			code, err = generateCode(6)
+			if err != nil {
+				return Link{}, err
+			}
+			if _, exists := s.links[code]; !exists {
+				break
+			}
+		}
+	}
+
+	link := Link{
+		ID:        s.nextID,
+		Code:      code,
+		URL:       url,
+		CreatedAt: time.Now().UTC(),
+	}
+	s.nextID++
+	s.links[code] = link
+	s.byID[link.ID] = link
+
+	return link, nil
 }
