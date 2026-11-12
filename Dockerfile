@@ -35,7 +35,7 @@ FROM alpine:3.21
 
 LABEL org.opencontainers.image.title="ATAD project" \
       org.opencontainers.image.authors="Barbu Robert-Alex <robert.barbu@student.upt.ro>" \
-      org.opencontainers.image.source="https://github.com/RobertAlexBarbu/UrlShortener"
+      org.opencontainers.image.source="https://github.com/RobertAlexBarbu/urlshortener"
 
 # Run as an unprivileged user. A container process that does not need root
 # should not have it.
