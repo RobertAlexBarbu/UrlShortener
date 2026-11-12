@@ -1,10 +1,10 @@
-# [Project title]
+# [URL Shortener with Analytic
 
 A service that turns a long URL into a short code, redirects anyone who visits that code to the
 original address, and records something about each visit.
 
-- **Student:** [Barbu Robert-Alex], group [DMWD]
-- **Project:** [1 - URL Shortener with Analytic]
+- **Student:** Barbu Robert-Alex, group DMWD
+- **Project:** 1 - URL Shortener with Analytic
 - **Language:** Go
 
 ## What it does
