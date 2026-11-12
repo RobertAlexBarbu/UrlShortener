@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -143,6 +144,10 @@ func newHandler() http.Handler {
 		writeJSON(w, http.StatusCreated, link)
 	})
 
+	mux.HandleFunc("GET /links", func(w http.ResponseWriter, r *http.Request) {
+		writeJSON(w, http.StatusOK, store.List())
+	})
+
 	return mux
 }
 
@@ -195,6 +200,23 @@ func (s *LinkStore) Reset() {
 	s.links = make(map[string]Link)
 	s.byID = make(map[int]Link)
 	s.nextID = 1
+}
+
+func (s *LinkStore) List() []Link {
+	s.mu.RLock()
+	links := make([]Link, 0, len(s.byID))
+	for _, link := range s.byID {
+		links = append(links, link)
+	}
+	s.mu.RUnlock()
+
+	sort.Slice(links, func(i, j int) bool {
+		if links[i].CreatedAt.Equal(links[j].CreatedAt) {
+			return links[i].ID > links[j].ID
+		}
+		return links[i].CreatedAt.After(links[j].CreatedAt)
+	})
+	return links
 }
 
 const codeChars = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"

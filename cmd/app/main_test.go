@@ -24,10 +24,6 @@ func TestVersionReportsContractFields(t *testing.T) {
 	}
 }
 
-// Replace this with tests for your own logic. Aim for the behaviour that would
-// break silently, not for the lines that are easy to reach.
-func TestYourLogic(t *testing.T) {
-	t.Skip("write your own tests here")
 func TestCreateLinkEndpoint(t *testing.T) {
 	t.Run("creates link with supplied code", func(t *testing.T) {
 		response := postCreateLink(newHandler(), `{"url":" https://example.com/path ","code":" custom1 "}`)
@@ -105,4 +101,26 @@ func postCreateLink(handler http.Handler, body string) *httptest.ResponseRecorde
 	response := httptest.NewRecorder()
 	handler.ServeHTTP(response, request)
 	return response
+}
+
+func TestListLinksEndpoint(t *testing.T) {
+	handler := newHandler()
+	postCreateLink(handler, `{"url":"https://example.com/first","code":"first"}`)
+	postCreateLink(handler, `{"url":"https://example.com/second","code":"second"}`)
+
+	response := httptest.NewRecorder()
+	handler.ServeHTTP(response, httptest.NewRequest(http.MethodGet, "/links", nil))
+	if response.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", response.Code, http.StatusOK)
+	}
+	var links []Link
+	if err := json.Unmarshal(response.Body.Bytes(), &links); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if len(links) != 2 {
+		t.Fatalf("listed %d links, want 2", len(links))
+	}
+	if links[0].Code != "second" || links[1].Code != "first" {
+		t.Errorf("links are not newest first: %+v", links)
+	}
 }
