@@ -101,8 +101,8 @@ func newHandler() http.Handler {
 		fmt.Fprintf(w, `<!doctype html><html lang="en"><meta charset="utf-8">
 <title>%s</title><body>
 <h1>%s</h1>
-<p>[Surname Firstname], group [group]</p>
-<p>Project [number]: [title]</p>
+<p>Robert-Alex Barbu, group DMWD</p>
+<p>Project 1: URL Shortener</p>
 </body></html>`, version.Current().App, version.Current().App)
 	})
 
