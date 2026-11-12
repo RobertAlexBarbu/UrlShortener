@@ -124,3 +124,37 @@ func writeJSON(w http.ResponseWriter, status int, body any) {
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, map[string]string{"error": code, "message": message})
 }
+type Link struct {
+	ID        int       `json:"id"`
+	Code      string    `json:"code"`
+	URL       string    `json:"url"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type CreateLinkRequest struct {
+	URL  string `json:"url"`
+	Code string `json:"code,omitempty"`
+}
+
+type LinkStore struct {
+	mu     sync.RWMutex
+	links  map[string]Link
+	byID   map[int]Link
+	nextID int
+}
+
+func NewLinkStore() *LinkStore {
+	return &LinkStore{
+		links:  make(map[string]Link),
+		byID:   make(map[int]Link),
+		nextID: 1,
+	}
+}
+
+func (s *LinkStore) Reset() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.links = make(map[string]Link)
+	s.byID = make(map[int]Link)
+	s.nextID = 1
+}
